@@ -1,6 +1,6 @@
 #include "AppLayer.h"
 #include "Core/Application.h"
-#include "ImGui/imgui_impl_vulkan.h"
+#include "ImGui/imgui.h"
 
 AppLayer::AppLayer(const std::string& name)
 	: Layer("AppLayer")
