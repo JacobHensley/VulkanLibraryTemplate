@@ -6,7 +6,7 @@
 AppLayer::AppLayer(const std::string& name)
 	: Layer("AppLayer")
 {
-	m_Mesh = CreateRef<Mesh>("assets/models/Suzanne.gltf");
+	m_Mesh = CreateRef<Mesh>("assets/models/Suzanne/Suzanne.gltf");
 	m_Shader = CreateRef<Shader>("assets/shaders/Demo.glsl");
 
 	FramebufferSpecification framebufferSpec;
