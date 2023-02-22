@@ -34,10 +34,11 @@ class AppLayer : public Layer
 
 	private:
 		VkDescriptorPool CreateDescriptorPool();
-		VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetAllocateInfo allocateInfo);
+		VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetAllocateInfo allocateInfo, VkDescriptorPool pool);
 		void BeginRenderPass(Ref<Framebuffer> framebuffer, VkCommandBuffer activeCommandBuffer, bool explicitClear);
 		void EndRenderPass(VkCommandBuffer activeCommandBuffer);
 
+		void UpdateViewportDescriptor();
 	private:
 		Ref<Mesh> m_Mesh;
 		Ref<Shader> m_Shader;
@@ -48,6 +49,9 @@ class AppLayer : public Layer
 		CameraBuffer m_CameraBuffer;
 
 		VkDescriptorPool m_DescriptorPool = VK_NULL_HANDLE;
+		VkDescriptorPool m_ViewportDescriptorPool = VK_NULL_HANDLE;
 		VkDescriptorSet m_DescriptorSet = VK_NULL_HANDLE;
+		VkDescriptorSet m_ViewportImageDescriptorSet = VK_NULL_HANDLE;
+		VkImageView m_ViewportImageView = VK_NULL_HANDLE;
 		std::vector<VkWriteDescriptorSet> m_WriteDescriptors;
 };

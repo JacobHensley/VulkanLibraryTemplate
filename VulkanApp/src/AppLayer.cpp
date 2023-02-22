@@ -3,6 +3,8 @@
 #include "ImGui/imgui.h"
 #include "ImGui/imgui_impl_vulkan.h"
 
+#include <glm/gtc/type_ptr.hpp>
+
 AppLayer::AppLayer(const std::string& name)
 	: Layer("AppLayer")
 {
@@ -13,7 +15,7 @@ AppLayer::AppLayer(const std::string& name)
 	framebufferSpec.AttachmentFormats = { VK_FORMAT_R32G32B32A32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT };
 	framebufferSpec.Width = 1280;
 	framebufferSpec.Height = 720;
-	framebufferSpec.ClearOnLoad = false;
+	framebufferSpec.ClearOnLoad = true;
 	m_Framebuffer = CreateRef<Framebuffer>(framebufferSpec);
 
 	GraphicsPipelineSpecification pipelineSpec;
@@ -22,6 +24,8 @@ AppLayer::AppLayer(const std::string& name)
 	m_Pipeline = CreateRef<GraphicsPipeline>(pipelineSpec);
 
 	CameraSpecification cameraSpec;
+	cameraSpec.position = { 0, 0, 2 };
+	cameraSpec.rotation = { 0, 0, 0 };
 	m_Camera = CreateRef<Camera>(cameraSpec);
 
 	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
@@ -30,12 +34,41 @@ AppLayer::AppLayer(const std::string& name)
 
 	m_DescriptorPool = CreateDescriptorPool();
 
+	{
+		m_ViewportDescriptorPool = CreateDescriptorPool();
+
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+		descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+
+		descriptorSetAllocateInfo.pSetLayouts = &ImGui_ImplVulkan_GetDescriptorSetLayout();
+		descriptorSetAllocateInfo.descriptorSetCount = 1;
+
+		m_ViewportImageDescriptorSet = AllocateDescriptorSet(descriptorSetAllocateInfo, m_ViewportDescriptorPool);
+	}
+
+	Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
+	//VK_CHECK_RESULT(vkResetDescriptorPool(device->GetLogicalDevice(), m_DescriptorPool, 0));
+
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocateInfo.pSetLayouts = m_Shader->GetDescriptorSetLayouts().data();
+	descriptorSetAllocateInfo.descriptorSetCount = m_Shader->GetDescriptorSetLayouts().size();
+
+	m_DescriptorSet = AllocateDescriptorSet(descriptorSetAllocateInfo, m_DescriptorPool);
+
 	VkWriteDescriptorSet& cameraWriteDescriptor = m_WriteDescriptors.emplace_back();
 	cameraWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	cameraWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	cameraWriteDescriptor.dstBinding = 0;
 	cameraWriteDescriptor.pBufferInfo = &m_CameraUniformBuffer->GetDescriptorBufferInfo();
 	cameraWriteDescriptor.descriptorCount = 1;
+	cameraWriteDescriptor.dstSet = m_DescriptorSet;
+	vkUpdateDescriptorSets(device->GetLogicalDevice(), m_WriteDescriptors.size(), m_WriteDescriptors.data(), 0, NULL);
+
+	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
+	CameraBuffer* mem = m_CameraUniformBuffer->Map<CameraBuffer>();
+	memcpy(mem, glm::value_ptr(m_CameraBuffer.ViewProjection), sizeof(glm::mat4));
+	m_CameraUniformBuffer->Unmap();
 }
 
 AppLayer::~AppLayer()
@@ -53,21 +86,7 @@ void AppLayer::OnDetach()
 
 void AppLayer::OnUpdate()
 {
-	Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
-
-	VK_CHECK_RESULT(vkResetDescriptorPool(device->GetLogicalDevice(), m_DescriptorPool, 0));
-
-	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
-	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	descriptorSetAllocateInfo.pSetLayouts = m_Shader->GetDescriptorSetLayouts().data();
-	descriptorSetAllocateInfo.descriptorSetCount = m_Shader->GetDescriptorSetLayouts().size();
-
-	m_DescriptorSet = AllocateDescriptorSet(descriptorSetAllocateInfo);
-
-	for (auto& wd : m_WriteDescriptors)
-		wd.dstSet = m_DescriptorSet;
-
-	vkUpdateDescriptorSets(device->GetLogicalDevice(), m_WriteDescriptors.size(), m_WriteDescriptors.data(), 0, NULL);
+	m_Camera->Update();
 }
 
 void AppLayer::OnRender()
@@ -109,16 +128,19 @@ void AppLayer::OnImGUIRender()
 	ImVec2 size = ImGui::GetContentRegionAvail();
 
 	// Draw scene
-	const VkDescriptorImageInfo& descriptorInfo = m_Framebuffer->GetImage(0)->GetDescriptorImageInfo();
-	ImTextureID textureID = ImGui_ImplVulkan_AddTexture(descriptorInfo.sampler, descriptorInfo.imageView, descriptorInfo.imageLayout);
-
-	ImGui::Image((void*)textureID, ImVec2(size.x, size.y), ImVec2::ImVec2(0, 1), ImVec2::ImVec2(1, 0));
 	bool resized = m_Framebuffer->Resize(size.x, size.y);
-
 	if (resized)
 	{
 		m_Camera->Resize(size.x, size.y);
 	}
+	
+	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
+	CameraBuffer* mem = m_CameraUniformBuffer->Map<CameraBuffer>();
+	memcpy(mem, glm::value_ptr(m_CameraBuffer.ViewProjection), sizeof(glm::mat4));
+	m_CameraUniformBuffer->Unmap();
+
+	UpdateViewportDescriptor();
+	ImGui::Image(m_ViewportImageDescriptorSet, ImVec2(size.x, size.y), ImVec2::ImVec2(0, 1), ImVec2::ImVec2(1, 0));
 
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -148,11 +170,11 @@ VkDescriptorPool AppLayer::CreateDescriptorPool()
 	return descriptorPool;
 }
 
-VkDescriptorSet AppLayer::AllocateDescriptorSet(VkDescriptorSetAllocateInfo allocateInfo)
+VkDescriptorSet AppLayer::AllocateDescriptorSet(VkDescriptorSetAllocateInfo allocateInfo, VkDescriptorPool pool)
 {
 	VkDevice device = Application::GetApp().GetVulkanDevice()->GetLogicalDevice();
 
-	allocateInfo.descriptorPool = m_DescriptorPool;
+	allocateInfo.descriptorPool = pool;
 
 	VkDescriptorSet descriptorSet;
 	VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &allocateInfo, &descriptorSet));
@@ -238,4 +260,27 @@ void AppLayer::BeginRenderPass(Ref<Framebuffer> framebuffer, VkCommandBuffer act
 void AppLayer::EndRenderPass(VkCommandBuffer activeCommandBuffer)
 {
 	vkCmdEndRenderPass(activeCommandBuffer);
+}
+
+void AppLayer::UpdateViewportDescriptor()
+{
+	const VkDescriptorImageInfo& descriptorInfo = m_Framebuffer->GetImage(0)->GetDescriptorImageInfo();
+	// Up to date
+	if (m_ViewportImageView == descriptorInfo.imageView)
+		return;
+
+	VkDescriptorImageInfo desc_image{};
+	desc_image.sampler = descriptorInfo.sampler;
+	desc_image.imageView = descriptorInfo.imageView;
+	desc_image.imageLayout = descriptorInfo.imageLayout;
+	VkWriteDescriptorSet write_desc{};
+	write_desc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	write_desc.dstSet = m_ViewportImageDescriptorSet;
+	write_desc.descriptorCount = 1;
+	write_desc.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	write_desc.pImageInfo = &desc_image;
+
+	VkDevice device = Application::GetVulkanDevice()->GetLogicalDevice();
+	vkUpdateDescriptorSets(device, 1, &write_desc, 0, nullptr);
+	m_ViewportImageView = descriptorInfo.imageView;
 }
