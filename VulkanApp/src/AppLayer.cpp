@@ -8,8 +8,7 @@
 AppLayer::AppLayer(const std::string& name)
 	: Layer("AppLayer")
 {
-	m_Mesh = CreateRef<Mesh>("assets/models/Suzanne/Suzanne.gltf");
-//	m_Mesh = CreateRef<Mesh>("assets/models/BrickCube/untitled.gltf");
+	m_Mesh = CreateRef<Mesh>("assets/models/Suzanne/glTF/Suzanne.gltf");
 	m_Shader = CreateRef<Shader>("assets/shaders/Demo.glsl");
 
 	FramebufferSpecification framebufferSpec;
@@ -28,6 +27,8 @@ AppLayer::AppLayer(const std::string& name)
 	m_Camera = CreateRef<Camera>(cameraSpec);
 
 	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
+	m_CameraBuffer.InverseViewProjection = m_Camera->GetInverseViewProjection();
+	m_CameraBuffer.CameraPosition = m_Camera->GetPosition();
 
 	m_CameraUniformBuffer = CreateRef<UniformBuffer>(&m_CameraBuffer, sizeof(CameraBuffer), "Camera Uniform Buffer");
 
@@ -79,11 +80,18 @@ AppLayer::AppLayer(const std::string& name)
 	metallicRoughnessTextureWriteDescriptor.descriptorCount = 1;
 	metallicRoughnessTextureWriteDescriptor.dstSet = m_DescriptorSet;
 
+	VkWriteDescriptorSet& normalTextureWriteDescriptor = m_WriteDescriptors.emplace_back();
+	normalTextureWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	normalTextureWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	normalTextureWriteDescriptor.dstBinding = 3;
+	normalTextureWriteDescriptor.pImageInfo = &m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].NormalMapIndex]->GetDescriptorImageInfo();
+	normalTextureWriteDescriptor.descriptorCount = 1;
+	normalTextureWriteDescriptor.dstSet = m_DescriptorSet;
+
 	vkUpdateDescriptorSets(device->GetLogicalDevice(), m_WriteDescriptors.size(), m_WriteDescriptors.data(), 0, NULL);
 
-	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
 	CameraBuffer* mem = m_CameraUniformBuffer->Map<CameraBuffer>();
-	memcpy(mem, glm::value_ptr(m_CameraBuffer.ViewProjection), sizeof(glm::mat4));
+	memcpy(mem, &m_CameraBuffer, sizeof(CameraBuffer));
 	m_CameraUniformBuffer->Unmap();
 }
 
@@ -114,7 +122,7 @@ void AppLayer::OnRender()
 
 	vkCmdBindPipeline(activeCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline->GetPipeline());
 
-	glm::mat4 transform = glm::mat4(1.0f);
+	glm::mat4 transform = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f));
 
 	VkDeviceSize offset = 0;
 	VkBuffer vertexBuffer = m_Mesh->GetVertexBuffer()->GetBuffer();
@@ -124,8 +132,13 @@ void AppLayer::OnRender()
 	vkCmdPushConstants(activeCommandBuffer, m_Pipeline->GetPipelineLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &transform);
 	vkCmdBindDescriptorSets(activeCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline->GetPipelineLayout(), 0, 1, &m_DescriptorSet, 0, nullptr);
 
-	for (const SubMesh& subMesh : m_Mesh->GetSubMeshes())
+	for (int i = 0;i < m_Mesh->GetSubMeshes().size();i++)
+	{
+		const SubMesh& subMesh = m_Mesh->GetSubMeshes()[i];
+
 		vkCmdDrawIndexed(activeCommandBuffer, subMesh.IndexCount, 1, subMesh.IndexOffset, subMesh.VertexOffset, 0);
+	}
+		
 
 	EndRenderPass(activeCommandBuffer);
 	device->FlushCommandBuffer(activeCommandBuffer, true);
@@ -151,8 +164,11 @@ void AppLayer::OnImGUIRender()
 	}
 	
 	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
+	m_CameraBuffer.InverseViewProjection = m_Camera->GetInverseViewProjection();
+	m_CameraBuffer.CameraPosition = m_Camera->GetPosition();
+
 	CameraBuffer* mem = m_CameraUniformBuffer->Map<CameraBuffer>();
-	memcpy(mem, glm::value_ptr(m_CameraBuffer.ViewProjection), sizeof(glm::mat4));
+	memcpy(mem, &m_CameraBuffer, sizeof(CameraBuffer));
 	m_CameraUniformBuffer->Unmap();
 
 	UpdateViewportDescriptor();

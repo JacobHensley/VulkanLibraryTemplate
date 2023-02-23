@@ -15,6 +15,8 @@ using namespace VkLibrary;
 struct CameraBuffer
 {
 	glm::mat4 ViewProjection;
+	glm::mat4 InverseViewProjection;
+	glm::vec3 CameraPosition;
 };
 
 class AppLayer : public Layer
