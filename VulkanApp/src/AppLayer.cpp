@@ -9,6 +9,7 @@ AppLayer::AppLayer(const std::string& name)
 	: Layer("AppLayer")
 {
 	m_Mesh = CreateRef<Mesh>("assets/models/Suzanne/Suzanne.gltf");
+//	m_Mesh = CreateRef<Mesh>("assets/models/BrickCube/untitled.gltf");
 	m_Shader = CreateRef<Shader>("assets/shaders/Demo.glsl");
 
 	FramebufferSpecification framebufferSpec;
@@ -24,8 +25,6 @@ AppLayer::AppLayer(const std::string& name)
 	m_Pipeline = CreateRef<GraphicsPipeline>(pipelineSpec);
 
 	CameraSpecification cameraSpec;
-	cameraSpec.position = { 0, 0, 2 };
-	cameraSpec.rotation = { 0, 0, 0 };
 	m_Camera = CreateRef<Camera>(cameraSpec);
 
 	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
@@ -63,6 +62,23 @@ AppLayer::AppLayer(const std::string& name)
 	cameraWriteDescriptor.pBufferInfo = &m_CameraUniformBuffer->GetDescriptorBufferInfo();
 	cameraWriteDescriptor.descriptorCount = 1;
 	cameraWriteDescriptor.dstSet = m_DescriptorSet;
+
+	VkWriteDescriptorSet& albedoTextureWriteDescriptor = m_WriteDescriptors.emplace_back();
+	albedoTextureWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	albedoTextureWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	albedoTextureWriteDescriptor.dstBinding = 1;
+	albedoTextureWriteDescriptor.pImageInfo = &m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].AlbedoMapIndex]->GetDescriptorImageInfo();
+	albedoTextureWriteDescriptor.descriptorCount = 1;
+	albedoTextureWriteDescriptor.dstSet = m_DescriptorSet;
+
+	VkWriteDescriptorSet& metallicRoughnessTextureWriteDescriptor = m_WriteDescriptors.emplace_back();
+	metallicRoughnessTextureWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	metallicRoughnessTextureWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	metallicRoughnessTextureWriteDescriptor.dstBinding = 2;
+	metallicRoughnessTextureWriteDescriptor.pImageInfo = &m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].MetallicRoughnessMapIndex]->GetDescriptorImageInfo();
+	metallicRoughnessTextureWriteDescriptor.descriptorCount = 1;
+	metallicRoughnessTextureWriteDescriptor.dstSet = m_DescriptorSet;
+
 	vkUpdateDescriptorSets(device->GetLogicalDevice(), m_WriteDescriptors.size(), m_WriteDescriptors.data(), 0, NULL);
 
 	m_CameraBuffer.ViewProjection = m_Camera->GetViewProjection();
