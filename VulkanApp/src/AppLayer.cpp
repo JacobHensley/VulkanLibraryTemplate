@@ -1,5 +1,7 @@
 #include "AppLayer.h"
 #include "Core/Application.h"
+#include "Graphics/TextureCube.h"
+
 #include "ImGui/imgui.h"
 #include "ImGui/imgui_impl_vulkan.h"
 
@@ -10,6 +12,10 @@ AppLayer::AppLayer(const std::string& name)
 {
 	m_Mesh = CreateRef<Mesh>("assets/models/Suzanne/glTF/Suzanne.gltf");
 	m_Shader = CreateRef<Shader>("assets/shaders/Demo.glsl");
+	m_PreethamSkyShader = CreateRef<Shader>("assets/shaders/PreethamSky.glsl");
+	m_SkyboxShader = CreateRef<Shader>("assets/shaders/Skybox.glsl");
+
+	m_TextureCube = CreateRef<TextureCube>(2048, 2048, VK_FORMAT_R32G32B32A32_SFLOAT);
 
 	FramebufferSpecification framebufferSpec;
 	framebufferSpec.AttachmentFormats = { VK_FORMAT_R32G32B32A32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT };
@@ -22,6 +28,19 @@ AppLayer::AppLayer(const std::string& name)
 	pipelineSpec.Shader = m_Shader;
 	pipelineSpec.TargetRenderPass = m_Framebuffer->GetRenderPass();
 	m_Pipeline = CreateRef<GraphicsPipeline>(pipelineSpec);
+
+	{
+		ComputePipelineSpecification computePipelineSpec;
+		computePipelineSpec.Shader = m_PreethamSkyShader;
+		m_PreethamSkyPipeline = CreateRef<ComputePipeline>(computePipelineSpec);
+	}
+
+	{
+		GraphicsPipelineSpecification pipelineSpec;
+		pipelineSpec.Shader = m_SkyboxShader;
+		pipelineSpec.TargetRenderPass = m_Framebuffer->GetRenderPass();
+		m_SkyboxPipeline = CreateRef<GraphicsPipeline>(pipelineSpec);
+	}
 
 	CameraSpecification cameraSpec;
 	m_Camera = CreateRef<Camera>(cameraSpec);
@@ -46,6 +65,59 @@ AppLayer::AppLayer(const std::string& name)
 		m_ViewportImageDescriptorSet = AllocateDescriptorSet(descriptorSetAllocateInfo, m_ViewportDescriptorPool);
 	}
 
+	{
+		Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
+
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+		descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		descriptorSetAllocateInfo.pSetLayouts = m_PreethamSkyShader->GetDescriptorSetLayouts().data();
+		descriptorSetAllocateInfo.descriptorSetCount = m_PreethamSkyShader->GetDescriptorSetLayouts().size();
+
+		m_ComputeDescriptorSet = AllocateDescriptorSet(descriptorSetAllocateInfo, m_DescriptorPool);
+
+		VkWriteDescriptorSet cubeMapWriteDescriptor{};
+		cubeMapWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		cubeMapWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		cubeMapWriteDescriptor.dstBinding = 0;
+		cubeMapWriteDescriptor.pImageInfo = &m_TextureCube->GetDescriptorImageInfo();
+		cubeMapWriteDescriptor.descriptorCount = 1;
+		cubeMapWriteDescriptor.dstSet = m_ComputeDescriptorSet;
+
+		vkUpdateDescriptorSets(device->GetLogicalDevice(), 1, &cubeMapWriteDescriptor, 0, NULL);
+	}
+
+	{
+		Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
+
+		VkDescriptorSetAllocateInfo descriptorSetAllocateInfo{};
+		descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		descriptorSetAllocateInfo.pSetLayouts = m_SkyboxShader->GetDescriptorSetLayouts().data();
+		descriptorSetAllocateInfo.descriptorSetCount = m_SkyboxShader->GetDescriptorSetLayouts().size();
+
+		m_SkyboxDescriptorSet = AllocateDescriptorSet(descriptorSetAllocateInfo, m_DescriptorPool);
+
+		std::vector<VkWriteDescriptorSet> skyboxWriteDescriptors;
+
+		VkWriteDescriptorSet& cameraWriteDescriptor = skyboxWriteDescriptors.emplace_back();
+		cameraWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		cameraWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		cameraWriteDescriptor.dstBinding = 0;
+		cameraWriteDescriptor.pBufferInfo = &m_CameraUniformBuffer->GetDescriptorBufferInfo();
+		cameraWriteDescriptor.descriptorCount = 1;
+		cameraWriteDescriptor.dstSet = m_SkyboxDescriptorSet;
+
+		VkWriteDescriptorSet& cubeMapWriteDescriptor = skyboxWriteDescriptors.emplace_back();
+		cubeMapWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		cubeMapWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		cubeMapWriteDescriptor.dstBinding = 1;
+		cubeMapWriteDescriptor.pImageInfo = &m_TextureCube->GetDescriptorImageInfo();
+		cubeMapWriteDescriptor.descriptorCount = 1;
+		cubeMapWriteDescriptor.dstSet = m_SkyboxDescriptorSet;
+
+		vkUpdateDescriptorSets(device->GetLogicalDevice(), skyboxWriteDescriptors.size(), skyboxWriteDescriptors.data(), 0, NULL);
+	}
+
+	
 	Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
 	//VK_CHECK_RESULT(vkResetDescriptorPool(device->GetLogicalDevice(), m_DescriptorPool, 0));
 
@@ -111,15 +183,37 @@ void AppLayer::OnDetach()
 void AppLayer::OnUpdate()
 {
 	m_Camera->Update();
+
+	{
+		Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
+		VkCommandBuffer activeCommandBuffer = device->CreateCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		vkCmdBindPipeline(activeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_PreethamSkyPipeline->GetPipeline());
+		vkCmdBindDescriptorSets(activeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_PreethamSkyPipeline->GetPipelineLayout(), 0, 1, &m_ComputeDescriptorSet, 0, nullptr);
+		vkCmdPushConstants(activeCommandBuffer, m_PreethamSkyPipeline->GetPipelineLayout(), VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(glm::vec3), &m_SkyBoxSettings);
+		vkCmdDispatch(activeCommandBuffer, 64, 64, 6);
+		device->FlushCommandBuffer(activeCommandBuffer, true);
+	}
 }
 
 void AppLayer::OnRender()
 {
 	Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
 
+	{
+		VkCommandBuffer activeCommandBuffer = device->CreateCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		BeginRenderPass(m_Framebuffer, activeCommandBuffer, false);
+
+		vkCmdBindPipeline(activeCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxPipeline->GetPipeline());
+		vkCmdBindDescriptorSets(activeCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxPipeline->GetPipelineLayout(), 0, 1, &m_SkyboxDescriptorSet, 0, nullptr);
+		vkCmdDraw(activeCommandBuffer, 3, 1, 0, 0);
+
+		EndRenderPass(activeCommandBuffer);
+		device->FlushCommandBuffer(activeCommandBuffer, true);
+	}
+
 	VkCommandBuffer activeCommandBuffer = device->CreateCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
 	BeginRenderPass(m_Framebuffer, activeCommandBuffer, false);
-
+	
 	vkCmdBindPipeline(activeCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline->GetPipeline());
 
 	glm::mat4 transform = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f));
@@ -176,6 +270,10 @@ void AppLayer::OnImGUIRender()
 
 	ImGui::End();
 	ImGui::PopStyleVar();
+
+	ImGui::Begin("Settings");
+	ImGui::DragFloat3("Test", glm::value_ptr(m_SkyBoxSettings), 0.1f, 0.0f, 10.0f);
+	ImGui::End();
 }
 
 VkDescriptorPool AppLayer::CreateDescriptorPool()
@@ -185,6 +283,7 @@ VkDescriptorPool AppLayer::CreateDescriptorPool()
 	VkDescriptorPoolSize poolSizes[] =
 	{
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 10 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
 		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 }
 	};
