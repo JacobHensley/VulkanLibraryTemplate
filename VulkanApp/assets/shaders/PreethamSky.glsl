@@ -8,7 +8,7 @@
 
 const float PI = 3.141592;
 
-layout(binding = 0, rgba32f) restrict writeonly uniform imageCube o_CubeMap;
+layout(binding = 0, rgba32f) restrict writeonly uniform imageCube u_CubeMap;
 
 layout (push_constant) uniform Uniforms
 {
@@ -17,7 +17,7 @@ layout (push_constant) uniform Uniforms
 
 vec3 GetCubeMapTexCoord()
 {
-    vec2 st = gl_GlobalInvocationID.xy / vec2(imageSize(o_CubeMap));
+    vec2 st = gl_GlobalInvocationID.xy / vec2(imageSize(u_CubeMap));
     vec2 uv = 2.0 * vec2(st.x, 1.0 - st.y) - vec2(1.0);
 
     vec3 ret;
@@ -139,5 +139,5 @@ void main()
     vec3 skyLuminance 	= calculateSkyLuminanceRGB( sunDir, viewDir, turbidity );
     
     vec4 color = vec4(skyLuminance * 0.05, 1.0);
-	imageStore(o_CubeMap, ivec3(gl_GlobalInvocationID), color);
+	imageStore(u_CubeMap, ivec3(gl_GlobalInvocationID), color);
 }

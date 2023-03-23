@@ -60,6 +60,8 @@ layout(set = 0, binding = 0) uniform CameraBuffer
 layout(set = 0, binding = 1) uniform sampler2D u_AlbedoTexture;
 layout(set = 0, binding = 2) uniform sampler2D u_MetallicRoughnessTexture;
 layout(set = 0, binding = 3) uniform sampler2D u_NormalTexture;
+layout(set = 0, binding = 4) uniform sampler2D u_BRDFLutTexture; 
+layout(set = 0, binding = 5) uniform samplerCube u_SkyboxTexture;
 
 // Constants
 const float Epsilon = 0.00001;
@@ -122,6 +124,22 @@ vec3 DirectionalLight_Contribution(vec3 F0, vec3 V, vec3 N, vec3 albedo, float R
 	return (diffuseBRDF + specularBRDF) * Lradiance * cosLi;
 }
 
+vec3 IBL_Contribution(vec3 Lr, vec3 albedo, float R, float M, vec3 N, vec3 V, float NdotV, vec3 F0)
+{
+	vec3 irradiance = texture(u_SkyboxTexture, N).rgb;
+	vec3 F = fresnelSchlickRoughness(F0, NdotV, R);
+	vec3 kd = (1.0 - F) * (1.0 - M);
+	vec3 diffuseIBL = albedo * irradiance;
+
+	int mipLevels = textureQueryLevels(u_SkyboxTexture);
+	float roughness = sqrt(R) * mipLevels;
+	vec3 specularIrradiance = textureLod(u_SkyboxTexture, Lr, roughness).rgb * albedo;
+
+	vec2 specularBRDF = texture(u_BRDFLutTexture, vec2(NdotV, 1.0 - R)).rg;
+	vec3 specularIBL = specularIrradiance * (F * specularBRDF.x + specularBRDF.y);
+	return kd * diffuseIBL + specularIBL;
+}
+
 void main() 
 {
 	vec3 albedo = texture(u_AlbedoTexture, v_TexCoord).rgb;
@@ -138,7 +156,8 @@ void main()
 	vec3 F0 = mix(Fdielectric, albedo, metallic);
 
 	vec3 directionalLight_Contribution = DirectionalLight_Contribution(F0, view, normal, albedo, roughness, metallic, NdotV);
+	vec3 IBL_Contribution = IBL_Contribution(Lr, albedo, roughness, metallic, normal, view, NdotV, F0);
 
-    outColor.rgb = directionalLight_Contribution;
+    outColor.rgb = directionalLight_Contribution + IBL_Contribution;
     outColor.a = 1.0;
 }

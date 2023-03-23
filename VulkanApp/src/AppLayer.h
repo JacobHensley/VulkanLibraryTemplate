@@ -3,11 +3,12 @@
 #include "Core/Layer.h"
 #include "Graphics/Mesh.h"
 #include "Graphics/Shader.h"
+#include "Graphics/Camera.h"
 #include "Graphics/Framebuffer.h"
+#include "Graphics/TextureCube.h"
 #include "Graphics/GraphicsPipeline.h"
 #include "Graphics/ComputePipeline.h"
-#include "Graphics/TextureCube.h"
-#include "Graphics/Camera.h"
+#include "Graphics/RenderCommandBuffer.h"
 #include "Graphics/VulkanBuffers.h"
 #include "Graphics/VulkanTools.h"
 #include <vulkan/vulkan.h>
@@ -20,6 +21,10 @@ struct CameraBuffer
 	glm::mat4 InverseViewProjection;
 	glm::vec3 CameraPosition;
 };
+
+// TODO: Apply correct materials to sub meshes
+// TODO: Apply transforms to sub meshes
+// TODO: Fix Vulkan warnings
 
 class AppLayer : public Layer
 {
@@ -37,34 +42,43 @@ class AppLayer : public Layer
 		void OnImGUIRender();
 
 	private:
-		VkDescriptorPool CreateDescriptorPool();
-		VkDescriptorSet AllocateDescriptorSet(VkDescriptorSetAllocateInfo allocateInfo, VkDescriptorPool pool);
-		void BeginRenderPass(Ref<Framebuffer> framebuffer, VkCommandBuffer activeCommandBuffer, bool explicitClear);
-		void EndRenderPass(VkCommandBuffer activeCommandBuffer);
+		void BeginRenderPass(Ref<Framebuffer> framebuffer, VkCommandBuffer commandBuffer, bool explicitClear);
+		void EndRenderPass(VkCommandBuffer commandBuffer);
 
-		void UpdateViewportDescriptor();
+		VkWriteDescriptorSet GenerateBufferWriteDescriptor(const std::string& name, Ref<Shader> shader, const VkDescriptorSet descriptorSet, const VkDescriptorBufferInfo bufferInfo);
+		VkWriteDescriptorSet GenerateImageWriteDescriptor(const std::string& name, Ref<Shader> shader, const VkDescriptorSet descriptorSet, const VkDescriptorImageInfo imageInfo);
+
+		VkDescriptorPool CreateDescriptorPool();
+
 	private:
 		Ref<Mesh> m_Mesh;
-		Ref<Shader> m_Shader;
-		Ref<Shader> m_PreethamSkyShader;
-		Ref<Shader> m_SkyboxShader;
 		Ref<Framebuffer> m_Framebuffer;
-		Ref<GraphicsPipeline> m_Pipeline;
-		Ref<GraphicsPipeline> m_SkyboxPipeline;
-		Ref<ComputePipeline> m_PreethamSkyPipeline;
-		Ref<Camera> m_Camera;
-		Ref<UniformBuffer> m_CameraUniformBuffer;
-		Ref<TextureCube> m_TextureCube;
-		CameraBuffer m_CameraBuffer;
+		Ref<TextureCube> m_Skybox;
+		Ref<Texture2D> m_BRDFLut;
 
-		glm::vec3 m_SkyBoxSettings = { 2.0f, 3.14f, 3.14f / 2.0f };;
+		Ref<Camera> m_Camera;
+		CameraBuffer m_CameraBuffer;
+		Ref<UniformBuffer> m_CameraUniformBuffer;
+		
+		Ref<RenderCommandBuffer> m_RenderCommandBuffer;
+
+		glm::vec3 m_SkyboxSettings = { 3.14f, 0.0f, 0.0f };;
 
 		VkDescriptorPool m_DescriptorPool = VK_NULL_HANDLE;
-		VkDescriptorPool m_ViewportDescriptorPool = VK_NULL_HANDLE;
-		VkDescriptorSet m_DescriptorSet = VK_NULL_HANDLE;
-		VkDescriptorSet m_ComputeDescriptorSet = VK_NULL_HANDLE;
+
+		Ref<Shader> m_PBRShader;
+		Ref<Shader> m_PreethamSkyShader;
+		Ref<Shader> m_SkyboxShader;
+
+		Ref<GraphicsPipeline> m_GeometryPipeline;
+		Ref<GraphicsPipeline> m_SkyboxPipeline;
+		Ref<ComputePipeline> m_PreethamSkyPipeline;
+
+		VkDescriptorSet m_GeometryDescriptorSet = VK_NULL_HANDLE;
 		VkDescriptorSet m_SkyboxDescriptorSet = VK_NULL_HANDLE;
+		VkDescriptorSet m_PreethamSkyDescriptorSet = VK_NULL_HANDLE;
+
+		VkDescriptorPool m_ViewportDescriptorPool = VK_NULL_HANDLE;
 		VkDescriptorSet m_ViewportImageDescriptorSet = VK_NULL_HANDLE;
 		VkImageView m_ViewportImageView = VK_NULL_HANDLE;
-		std::vector<VkWriteDescriptorSet> m_WriteDescriptors;
 };
