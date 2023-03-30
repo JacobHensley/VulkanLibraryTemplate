@@ -56,6 +56,20 @@ AppLayer::AppLayer(const std::string& name)
 		VK_CHECK_RESULT(vkAllocateDescriptorSets(device->GetLogicalDevice(), &descriptorSetAllocateInfo, &m_ViewportImageDescriptorSet));
 	}
 
+	// Setup system descriptor sets
+	{
+		m_RendererDescriptorSets[0] = m_PBRShader->AllocateDescriptorSet(m_DescriptorPool, 0);
+		m_RendererDescriptorSets[1] = m_PBRShader->AllocateDescriptorSet(m_DescriptorPool, 1);
+		m_RendererDescriptorSets[2] = m_PBRShader->AllocateDescriptorSet(m_DescriptorPool, 2);
+		std::vector<VkWriteDescriptorSet> writeDescriptors;
+		
+		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_BRDFLutTexture", m_PBRShader, m_RendererDescriptorSets[0], m_BRDFLut->GetDescriptorImageInfo()));
+		writeDescriptors.push_back(GenerateBufferWriteDescriptor("CameraBuffer", m_PBRShader, m_RendererDescriptorSets[1], m_CameraUniformBuffer->GetDescriptorBufferInfo()));
+		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_SkyboxTexture", m_PBRShader, m_RendererDescriptorSets[2], m_Skybox->GetDescriptorImageInfo()));
+		
+		vkUpdateDescriptorSets(device->GetLogicalDevice(), writeDescriptors.size(), writeDescriptors.data(), 0, nullptr);
+	}
+
 	// Geometry pass
 	{
 		GraphicsPipelineSpecification spec;
@@ -63,15 +77,13 @@ AppLayer::AppLayer(const std::string& name)
 		spec.TargetRenderPass = m_Framebuffer->GetRenderPass();
 		m_GeometryPipeline = CreateRef<GraphicsPipeline>(spec);
 
-		m_GeometryDescriptorSet = m_PBRShader->AllocateDescriptorSet(m_DescriptorPool);
+		// This DescriptorSet would be in a material class
+		m_GeometryMaterialDescriptorSet = m_PBRShader->AllocateDescriptorSet(m_DescriptorPool, 3);
 		std::vector<VkWriteDescriptorSet> writeDescriptors;
 
-		writeDescriptors.push_back(GenerateBufferWriteDescriptor("CameraBuffer", m_PBRShader, m_GeometryDescriptorSet, m_CameraUniformBuffer->GetDescriptorBufferInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_AlbedoTexture", m_PBRShader, m_GeometryDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].AlbedoMapIndex]->GetDescriptorImageInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_MetallicRoughnessTexture", m_PBRShader, m_GeometryDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].MetallicRoughnessMapIndex]->GetDescriptorImageInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_NormalTexture", m_PBRShader, m_GeometryDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].NormalMapIndex]->GetDescriptorImageInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_BRDFLutTexture", m_PBRShader, m_GeometryDescriptorSet, m_BRDFLut->GetDescriptorImageInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_SkyboxTexture", m_PBRShader, m_GeometryDescriptorSet, m_Skybox->GetDescriptorImageInfo()));
+		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_AlbedoTexture", m_PBRShader, m_GeometryMaterialDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].AlbedoMapIndex]->GetDescriptorImageInfo()));
+		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_MetallicRoughnessTexture", m_PBRShader, m_GeometryMaterialDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].MetallicRoughnessMapIndex]->GetDescriptorImageInfo()));
+		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_NormalTexture", m_PBRShader, m_GeometryMaterialDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].NormalMapIndex]->GetDescriptorImageInfo()));
 
 		vkUpdateDescriptorSets(device->GetLogicalDevice(), writeDescriptors.size(), writeDescriptors.data(), 0, NULL);
 	}
@@ -82,14 +94,6 @@ AppLayer::AppLayer(const std::string& name)
 		spec.Shader = m_SkyboxShader;
 		spec.TargetRenderPass = m_Framebuffer->GetRenderPass();
 		m_SkyboxPipeline = CreateRef<GraphicsPipeline>(spec);
-
-		m_SkyboxDescriptorSet = m_SkyboxShader->AllocateDescriptorSet(m_DescriptorPool);
-		std::vector<VkWriteDescriptorSet> writeDescriptors;
-
-		writeDescriptors.push_back(GenerateBufferWriteDescriptor("CameraBuffer", m_SkyboxShader, m_SkyboxDescriptorSet, m_CameraUniformBuffer->GetDescriptorBufferInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_SkyboxTexture", m_SkyboxShader, m_SkyboxDescriptorSet, m_Skybox->GetDescriptorImageInfo()));
-
-		vkUpdateDescriptorSets(device->GetLogicalDevice(), writeDescriptors.size(), writeDescriptors.data(), 0, NULL);
 	}
 
 	// PreethamSky pass
@@ -98,7 +102,7 @@ AppLayer::AppLayer(const std::string& name)
 		spec.Shader = m_PreethamSkyShader;
 		m_PreethamSkyPipeline = CreateRef<ComputePipeline>(spec);
 
-		m_PreethamSkyDescriptorSet = m_PreethamSkyShader->AllocateDescriptorSet(m_DescriptorPool);
+		m_PreethamSkyDescriptorSet = m_PreethamSkyShader->AllocateDescriptorSet(m_DescriptorPool, 0);
 		std::vector<VkWriteDescriptorSet> writeDescriptors;
 
 		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_CubeMap", m_PreethamSkyShader, m_PreethamSkyDescriptorSet, m_Skybox->GetDescriptorImageInfo()));
@@ -154,7 +158,7 @@ void AppLayer::OnRender()
 	// Draw fullscreen triangle with skybox texture
 	{
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxPipeline->GetPipeline());
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxPipeline->GetPipelineLayout(), 0, 1, &m_SkyboxDescriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_SkyboxPipeline->GetPipelineLayout(), 0, (uint32_t)m_RendererDescriptorSets.size(), m_RendererDescriptorSets.data(), 0, nullptr);
 
 		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 	}
@@ -162,6 +166,7 @@ void AppLayer::OnRender()
 	// Draw geometry
 	{
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipeline());
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipelineLayout(), 0, (uint32_t)m_RendererDescriptorSets.size(), m_RendererDescriptorSets.data(), 0, nullptr);
 
 		glm::mat4 transform = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
 
@@ -172,7 +177,9 @@ void AppLayer::OnRender()
 		vkCmdBindIndexBuffer(commandBuffer, m_Mesh->GetIndexBuffer()->GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdPushConstants(commandBuffer, m_GeometryPipeline->GetPipelineLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &transform);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipelineLayout(), 0, 1, &m_GeometryDescriptorSet, 0, nullptr);
+		
+		const uint32_t materialDescriptorSetIndex = 3;
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipelineLayout(), materialDescriptorSetIndex, 1, &m_GeometryMaterialDescriptorSet, 0, nullptr);
 
 		for (int i = 0; i < m_Mesh->GetSubMeshes().size(); i++)
 		{

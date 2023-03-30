@@ -20,7 +20,7 @@ layout(push_constant) uniform constants
 } PushConstants;
 
 // Uniforms
-layout(set = 0, binding = 0) uniform CameraBuffer
+layout(set = 1, binding = 0) uniform CameraBuffer
 {
     mat4 ViewProjection;
 	mat4 InverseViewProjection;
@@ -49,19 +49,25 @@ layout(location = 3) in vec3 v_WorldNormals;
 // Fragment Out
 layout(location = 0) out vec4 outColor;
 
+// DescriptorSets
+// Set 0: Constant Uniforms
+// Set 1: Renderer Uniforms
+// Set 2: Environment Uniforms
+// Set 3: Material Uniforms
+
 // Uniforms
-layout(set = 0, binding = 0) uniform CameraBuffer
+layout(set = 1, binding = 0) uniform CameraBuffer
 {
 	mat4 ViewProjection;
 	mat4 InverseViewProjection;
 	vec3 CameraPosition;
 } u_CameraBuffer;
 
-layout(set = 0, binding = 1) uniform sampler2D u_AlbedoTexture;
-layout(set = 0, binding = 2) uniform sampler2D u_MetallicRoughnessTexture;
-layout(set = 0, binding = 3) uniform sampler2D u_NormalTexture;
-layout(set = 0, binding = 4) uniform sampler2D u_BRDFLutTexture; 
-layout(set = 0, binding = 5) uniform samplerCube u_SkyboxTexture;
+layout(set = 0, binding = 0) uniform sampler2D u_BRDFLutTexture; 
+layout(set = 2, binding = 0) uniform samplerCube u_SkyboxTexture;
+layout(set = 3, binding = 0) uniform sampler2D u_AlbedoTexture;
+layout(set = 3, binding = 1) uniform sampler2D u_MetallicRoughnessTexture;
+layout(set = 3, binding = 2) uniform sampler2D u_NormalTexture;
 
 // Constants
 const float Epsilon = 0.00001;

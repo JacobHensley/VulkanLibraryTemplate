@@ -24,7 +24,6 @@ struct CameraBuffer
 
 // TODO: Apply correct materials to sub meshes
 // TODO: Apply transforms to sub meshes
-// TODO: Fix Vulkan warnings
 
 class AppLayer : public Layer
 {
@@ -74,8 +73,9 @@ class AppLayer : public Layer
 		Ref<GraphicsPipeline> m_SkyboxPipeline;
 		Ref<ComputePipeline> m_PreethamSkyPipeline;
 
-		VkDescriptorSet m_GeometryDescriptorSet = VK_NULL_HANDLE;
-		VkDescriptorSet m_SkyboxDescriptorSet = VK_NULL_HANDLE;
+		std::array<VkDescriptorSet, 3> m_RendererDescriptorSets;
+
+		VkDescriptorSet m_GeometryMaterialDescriptorSet = VK_NULL_HANDLE;
 		VkDescriptorSet m_PreethamSkyDescriptorSet = VK_NULL_HANDLE;
 
 		VkDescriptorPool m_ViewportDescriptorPool = VK_NULL_HANDLE;
