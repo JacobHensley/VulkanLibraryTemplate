@@ -76,16 +76,6 @@ AppLayer::AppLayer(const std::string& name)
 		spec.Shader = m_PBRShader;
 		spec.TargetRenderPass = m_Framebuffer->GetRenderPass();
 		m_GeometryPipeline = CreateRef<GraphicsPipeline>(spec);
-
-		// This DescriptorSet would be in a material class
-		m_GeometryMaterialDescriptorSet = m_PBRShader->AllocateDescriptorSet(m_DescriptorPool, 3);
-		std::vector<VkWriteDescriptorSet> writeDescriptors;
-
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_AlbedoTexture", m_PBRShader, m_GeometryMaterialDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].AlbedoMapIndex]->GetDescriptorImageInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_MetallicRoughnessTexture", m_PBRShader, m_GeometryMaterialDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].MetallicRoughnessMapIndex]->GetDescriptorImageInfo()));
-		writeDescriptors.push_back(GenerateImageWriteDescriptor("u_NormalTexture", m_PBRShader, m_GeometryMaterialDescriptorSet, m_Mesh->GetTextures()[m_Mesh->GetMaterialBuffers()[0].NormalMapIndex]->GetDescriptorImageInfo()));
-
-		vkUpdateDescriptorSets(device->GetLogicalDevice(), writeDescriptors.size(), writeDescriptors.data(), 0, NULL);
 	}
 
 	// Skybox pass
@@ -109,7 +99,6 @@ AppLayer::AppLayer(const std::string& name)
 
 		vkUpdateDescriptorSets(device->GetLogicalDevice(), writeDescriptors.size(), writeDescriptors.data(), 0, NULL);
 	}
-
 }
 
 AppLayer::~AppLayer()
@@ -168,22 +157,24 @@ void AppLayer::OnRender()
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipeline());
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipelineLayout(), 0, (uint32_t)m_RendererDescriptorSets.size(), m_RendererDescriptorSets.data(), 0, nullptr);
 
-		glm::mat4 transform = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
-
 		VkDeviceSize offset = 0;
 		VkBuffer vertexBuffer = m_Mesh->GetVertexBuffer()->GetBuffer();
+		glm::mat4 transform = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f));
 
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer, &offset);
 		vkCmdBindIndexBuffer(commandBuffer, m_Mesh->GetIndexBuffer()->GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
 		vkCmdPushConstants(commandBuffer, m_GeometryPipeline->GetPipelineLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &transform);
 		
 		const uint32_t materialDescriptorSetIndex = 3;
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipelineLayout(), materialDescriptorSetIndex, 1, &m_GeometryMaterialDescriptorSet, 0, nullptr);
-
 		for (int i = 0; i < m_Mesh->GetSubMeshes().size(); i++)
 		{
 			const SubMesh& subMesh = m_Mesh->GetSubMeshes()[i];
+			const Material& material = m_Mesh->GetMaterials()[subMesh.MaterialIndex];
+			VkDescriptorSet set = material.GetDescriptorSet();
+			const auto& desc = material.GetPushConstantRangeDescription();
+
+		//	vkCmdPushConstants(commandBuffer, m_GeometryPipeline->GetPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, desc.Offset, desc.Size, material.GetBuffer());
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipelineLayout(), materialDescriptorSetIndex, 1, &set, 0, nullptr);
 			vkCmdDrawIndexed(commandBuffer, subMesh.IndexCount, 1, subMesh.IndexOffset, subMesh.VertexOffset, 0);
 		}
 	}
@@ -336,7 +327,7 @@ void AppLayer::EndRenderPass(VkCommandBuffer commandBuffer)
 
 VkWriteDescriptorSet AppLayer::GenerateBufferWriteDescriptor(const std::string& name, Ref<Shader> shader, const VkDescriptorSet descriptorSet, const VkDescriptorBufferInfo bufferInfo)
 {
-	VkWriteDescriptorSet writeDescriptor = shader->GenerateWriteDescriptor(name);
+	VkWriteDescriptorSet writeDescriptor = shader->FindWriteDescriptorSet(name);
 	writeDescriptor.dstSet = descriptorSet;
 	writeDescriptor.pBufferInfo = &bufferInfo;
 
@@ -345,7 +336,7 @@ VkWriteDescriptorSet AppLayer::GenerateBufferWriteDescriptor(const std::string& 
 
 VkWriteDescriptorSet AppLayer::GenerateImageWriteDescriptor(const std::string& name, Ref<Shader> shader, const VkDescriptorSet descriptorSet, const VkDescriptorImageInfo imageInfo)
 {
-	VkWriteDescriptorSet writeDescriptor = shader->GenerateWriteDescriptor(name);
+	VkWriteDescriptorSet writeDescriptor = shader->FindWriteDescriptorSet(name);
 	writeDescriptor.dstSet = descriptorSet;
 	writeDescriptor.pImageInfo = &imageInfo;
 

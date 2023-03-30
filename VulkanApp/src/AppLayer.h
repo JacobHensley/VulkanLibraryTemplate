@@ -22,9 +22,6 @@ struct CameraBuffer
 	glm::vec3 CameraPosition;
 };
 
-// TODO: Apply correct materials to sub meshes
-// TODO: Apply transforms to sub meshes
-
 class AppLayer : public Layer
 {
 	public:
@@ -75,7 +72,6 @@ class AppLayer : public Layer
 
 		std::array<VkDescriptorSet, 3> m_RendererDescriptorSets;
 
-		VkDescriptorSet m_GeometryMaterialDescriptorSet = VK_NULL_HANDLE;
 		VkDescriptorSet m_PreethamSkyDescriptorSet = VK_NULL_HANDLE;
 
 		VkDescriptorPool m_ViewportDescriptorPool = VK_NULL_HANDLE;

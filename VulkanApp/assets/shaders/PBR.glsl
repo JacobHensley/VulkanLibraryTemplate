@@ -14,10 +14,10 @@ layout(location = 2) out vec2 v_TexCoord;
 layout(location = 3) out vec3 v_WorldNormals;
 
 // Push Constants
-layout(push_constant) uniform constants
+layout(push_constant) uniform PushConstantTransform
 {
     mat4 Transform;
-} PushConstants;
+} TransformData;
 
 // Uniforms
 layout(set = 1, binding = 0) uniform CameraBuffer
@@ -29,12 +29,12 @@ layout(set = 1, binding = 0) uniform CameraBuffer
 
 void main() 
 {
-    gl_Position = u_CameraBuffer.ViewProjection * PushConstants.Transform * vec4(a_Position, 1.0);
+    gl_Position = u_CameraBuffer.ViewProjection * TransformData.Transform * vec4(a_Position, 1.0);
 
-	v_Normal = mat3(PushConstants.Transform) * a_Normal;
-	v_WorldPosition = vec3(PushConstants.Transform * vec4(a_Position, 1.0f));
+	v_Normal = mat3(TransformData.Transform) * a_Normal;
+	v_WorldPosition = vec3(TransformData.Transform * vec4(a_Position, 1.0f));
 	v_TexCoord = a_TexCoord;
-	v_WorldNormals = inverse(transpose(mat3(PushConstants.Transform))) * a_Normal;
+	v_WorldNormals = inverse(transpose(mat3(TransformData.Transform))) * a_Normal;
 }
 
 #Shader Fragment
