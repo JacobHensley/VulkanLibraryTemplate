@@ -5,7 +5,6 @@
 #include "Graphics/Shader.h"
 #include "Graphics/Camera.h"
 #include "Graphics/Framebuffer.h"
-#include "Graphics/TextureCube.h"
 #include "Graphics/GraphicsPipeline.h"
 #include "Graphics/ComputePipeline.h"
 #include "Graphics/RenderCommandBuffer.h"
@@ -49,7 +48,7 @@ class AppLayer : public Layer
 	private:
 		Ref<Mesh> m_Mesh;
 		Ref<Framebuffer> m_Framebuffer;
-		Ref<TextureCube> m_Skybox;
+		Ref<Image> m_Skybox;
 		Ref<Texture2D> m_BRDFLut;
 
 		Ref<Camera> m_Camera;

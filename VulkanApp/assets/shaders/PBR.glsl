@@ -63,6 +63,14 @@ layout(set = 1, binding = 0) uniform CameraBuffer
 	vec3 CameraPosition;
 } u_CameraBuffer;
 
+layout(push_constant) uniform PushConstantMaterial
+{
+	layout(offset = 64) vec3 AlbedoValue;
+	layout(offset = 76) float MetallicValue;
+	layout(offset = 80) float RoughnessValue;
+	layout(offset = 84) bool UseNormalMap;
+} u_MaterialData;
+
 layout(set = 0, binding = 0) uniform sampler2D u_BRDFLutTexture; 
 layout(set = 2, binding = 0) uniform samplerCube u_SkyboxTexture;
 layout(set = 3, binding = 0) uniform sampler2D u_AlbedoTexture;
@@ -148,11 +156,11 @@ vec3 IBL_Contribution(vec3 Lr, vec3 albedo, float R, float M, vec3 N, vec3 V, fl
 
 void main() 
 {
-	vec3 albedo = texture(u_AlbedoTexture, v_TexCoord).rgb;
+	vec3 albedo = texture(u_AlbedoTexture, v_TexCoord).rgb * u_MaterialData.AlbedoValue;
 	vec2 metallicRoughness = texture(u_MetallicRoughnessTexture, v_TexCoord).bg;
-	float metallic = metallicRoughness.x;
-	float roughness = metallicRoughness.y;
-	vec3 normal = normalize(v_WorldNormals);
+	float metallic = metallicRoughness.x * u_MaterialData.MetallicValue;
+	float roughness = metallicRoughness.y * u_MaterialData.RoughnessValue;
+	vec3 normal = normalize(v_WorldNormals); // TODO: Fix normal map
 
 	vec3 view = normalize(u_CameraBuffer.CameraPosition - v_WorldPosition);
 	float NdotV = max(dot(normal, view), 0.0);
@@ -164,6 +172,6 @@ void main()
 	vec3 directionalLight_Contribution = DirectionalLight_Contribution(F0, view, normal, albedo, roughness, metallic, NdotV);
 	vec3 IBL_Contribution = IBL_Contribution(Lr, albedo, roughness, metallic, normal, view, NdotV, F0);
 
-    outColor.rgb = directionalLight_Contribution + IBL_Contribution;
+	outColor.rgb = directionalLight_Contribution + IBL_Contribution;
     outColor.a = 1.0;
 }

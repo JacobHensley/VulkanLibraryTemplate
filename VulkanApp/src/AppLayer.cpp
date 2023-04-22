@@ -15,17 +15,18 @@ AppLayer::AppLayer(const std::string& name)
 	m_RenderCommandBuffer = CreateRef<RenderCommandBuffer>(2);
 
 	FramebufferSpecification fbSpec;
-	fbSpec.AttachmentFormats = { VK_FORMAT_R32G32B32A32_SFLOAT, VK_FORMAT_D24_UNORM_S8_UINT };
+	fbSpec.AttachmentFormats = { ImageFormat::RGBA32F, ImageFormat::DEPTH24_STENCIL8 };
 	fbSpec.Width = 1280;
 	fbSpec.Height = 720;
 	fbSpec.ClearOnLoad = true;
 	m_Framebuffer = CreateRef<Framebuffer>(fbSpec);
 
-	TextureCubeSpecification skyboxSpec;
+	ImageSpecification skyboxSpec;
 	skyboxSpec.Width = 2048;
 	skyboxSpec.Height = 2048;
-	skyboxSpec.Format = VK_FORMAT_R32G32B32A32_SFLOAT;
-	m_Skybox = CreateRef<TextureCube>(skyboxSpec);
+	skyboxSpec.Format = ImageFormat::RGBA32F;
+	skyboxSpec.Usage = ImageUsage::STORAGE_IMAGE_CUBE;
+	m_Skybox = CreateRef<Image>(skyboxSpec);
 
 	CameraSpecification cameraSpec;
 	m_Camera = CreateRef<Camera>(cameraSpec);
@@ -173,7 +174,7 @@ void AppLayer::OnRender()
 			VkDescriptorSet set = material.GetDescriptorSet();
 			const auto& desc = material.GetPushConstantRangeDescription();
 
-		//	vkCmdPushConstants(commandBuffer, m_GeometryPipeline->GetPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, desc.Offset, desc.Size, material.GetBuffer());
+			vkCmdPushConstants(commandBuffer, m_GeometryPipeline->GetPipelineLayout(), VK_SHADER_STAGE_FRAGMENT_BIT, desc.Offset, desc.Size, material.GetBuffer());
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GeometryPipeline->GetPipelineLayout(), materialDescriptorSetIndex, 1, &set, 0, nullptr);
 			vkCmdDrawIndexed(commandBuffer, subMesh.IndexCount, 1, subMesh.IndexOffset, subMesh.VertexOffset, 0);
 		}
