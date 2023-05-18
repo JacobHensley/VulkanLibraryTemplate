@@ -9,7 +9,7 @@ AppLayer::AppLayer(const std::string& name)
 {
 	Ref<VulkanDevice> device = Application::GetApp().GetVulkanDevice();
 
-//	m_Mesh = CreateRef<Mesh>("assets/models/Suzanne/glTF/Suzanne.gltf");
+	//m_Mesh = CreateRef<Mesh>("assets/models/Suzanne/glTF/Suzanne.gltf");
 	m_Mesh = CreateRef<Mesh>("assets/models/Sponza/glTF/Sponza.gltf");
 
 	m_RenderCommandBuffer = CreateRef<RenderCommandBuffer>(2);
@@ -170,7 +170,7 @@ void AppLayer::OnRender()
 		for (int i = 0; i < m_Mesh->GetSubMeshes().size(); i++)
 		{
 			const SubMesh& subMesh = m_Mesh->GetSubMeshes()[i];
-			const Material& material = m_Mesh->GetMaterials()[subMesh.MaterialIndex];
+			Material& material = (Material&)m_Mesh->GetMaterials()[subMesh.MaterialIndex];
 			VkDescriptorSet set = material.GetDescriptorSet();
 			const auto& desc = material.GetPushConstantRangeDescription();
 

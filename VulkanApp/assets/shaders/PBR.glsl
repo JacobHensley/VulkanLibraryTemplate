@@ -8,10 +8,18 @@ layout(location = 2) in vec2 a_TexCoord;
 layout(location = 3) in vec4 a_Tangent;
 
 // Vertex Out
-layout(location = 0) out vec3 v_Normal;
-layout(location = 1) out vec3 v_WorldPosition;
-layout(location = 2) out vec2 v_TexCoord;
-layout(location = 3) out vec3 v_WorldNormals;
+
+struct VertexOutput
+{
+	vec3 NormalWS;
+	vec3 WorldPosition;
+	vec2 TexCoord;
+	vec3 Binormal;
+	vec3 Tangent;
+	mat3 NormalSpace;
+};
+
+layout (location = 0) out VertexOutput Output;
 
 // Push Constants
 layout(push_constant) uniform PushConstantTransform
@@ -31,20 +39,32 @@ void main()
 {
     gl_Position = u_CameraBuffer.ViewProjection * TransformData.Transform * vec4(a_Position, 1.0);
 
-	v_Normal = mat3(TransformData.Transform) * a_Normal;
-	v_WorldPosition = vec3(TransformData.Transform * vec4(a_Position, 1.0f));
-	v_TexCoord = a_TexCoord;
-	v_WorldNormals = inverse(transpose(mat3(TransformData.Transform))) * a_Normal;
+	Output.NormalWS = mat3(TransformData.Transform) * a_Normal;
+	Output.NormalWS = a_Normal;
+	Output.WorldPosition = vec3(TransformData.Transform * vec4(a_Position, 1.0f));
+	Output.TexCoord = a_TexCoord;
+	//Output.NormalSpace = inverse(transpose(mat3(TransformData.Transform))) * a_Normal;
+
+	Output.Tangent = a_Tangent.xyz;
+
+	vec3 binormal = cross(a_Tangent.xyz, a_Normal) * a_Tangent.w;
+	Output.NormalSpace = mat3(a_Tangent.xyz, binormal, a_Normal);
 }
 
 #Shader Fragment
 #version 450
 
-// Fragment In
-layout(location = 0) in vec3 v_Normal;
-layout(location = 1) in vec3 v_WorldPosition;
-layout(location = 2) in vec2 v_TexCoord;
-layout(location = 3) in vec3 v_WorldNormals;
+struct VertexOutput
+{
+	vec3 NormalWS;
+	vec3 WorldPosition;
+	vec2 TexCoord;
+	vec3 Binormal;
+	vec3 Tangent;
+	mat3 NormalSpace;
+};
+
+layout (location = 0) in VertexOutput Input;
 
 // Fragment Out
 layout(location = 0) out vec4 outColor;
@@ -66,9 +86,9 @@ layout(set = 1, binding = 0) uniform CameraBuffer
 layout(push_constant) uniform PushConstantMaterial
 {
 	layout(offset = 64) vec3 AlbedoValue;
-	layout(offset = 76) float MetallicValue;
-	layout(offset = 80) float RoughnessValue;
-	layout(offset = 84) bool UseNormalMap;
+	float MetallicValue;
+	float RoughnessValue;
+	bool UseNormalMap;
 } u_MaterialData;
 
 layout(set = 0, binding = 0) uniform sampler2D u_BRDFLutTexture; 
@@ -156,13 +176,15 @@ vec3 IBL_Contribution(vec3 Lr, vec3 albedo, float R, float M, vec3 N, vec3 V, fl
 
 void main() 
 {
-	vec3 albedo = texture(u_AlbedoTexture, v_TexCoord).rgb * u_MaterialData.AlbedoValue;
-	vec2 metallicRoughness = texture(u_MetallicRoughnessTexture, v_TexCoord).bg;
+	vec3 albedo = texture(u_AlbedoTexture, Input.TexCoord).rgb * u_MaterialData.AlbedoValue;
+	vec2 metallicRoughness = texture(u_MetallicRoughnessTexture, Input.TexCoord).bg;
 	float metallic = metallicRoughness.x * u_MaterialData.MetallicValue;
 	float roughness = metallicRoughness.y * u_MaterialData.RoughnessValue;
-	vec3 normal = normalize(v_WorldNormals); // TODO: Fix normal map
 
-	vec3 view = normalize(u_CameraBuffer.CameraPosition - v_WorldPosition);
+	vec3 normal = normalize(texture(u_NormalTexture, Input.TexCoord).rgb * 2.0 - 1.0);
+	normal = normalize(Input.NormalSpace * normal);
+
+	vec3 view = normalize(u_CameraBuffer.CameraPosition - Input.WorldPosition);
 	float NdotV = max(dot(normal, view), 0.0);
 	vec3 Lr = 2.0 * NdotV * normal - view;
 
